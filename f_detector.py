@@ -1,11 +1,25 @@
 import cv2
 import numpy as np
 import config as cfg
+import sys
+import time
+
+import logging
+logging.basicConfig(level=logging.INFO)
+
+sys.path.append('../')
+from obswebsocket import obsws, requests  # noqa: E402
+
+host = "localhost"
+port = 4444
+password = "secret"
+
+ws = obsws(host, port, password)
+ws.connect()
 
 def detect(img, cascade):
     rects,_,confidence = cascade.detectMultiScale3(img, scaleFactor=1.3, minNeighbors=4, minSize=(30, 30),
                                     flags=cv2.CASCADE_SCALE_IMAGE, outputRejectLevels = True)
-    #rects = cascade.detectMultiScale(img,minNeighbors=10, scaleFactor=1.05)
     if len(rects) == 0:
         return (),()
     rects[:,2:] += rects[:,:2]
@@ -25,29 +39,40 @@ def convert_rightbox(img,box_right):
             res = np.vstack((res,box))
     return res
 
+def obs_switch_scene(scene_name):
+    try:
+        #Send scene name to OBS 
+        ws.call(requests.SetCurrentScene(scene_name))
+    except KeyboardInterrupt:
+        ws.disconnect()
 
 class detect_face_orientation():
+
     def __init__(self):
-        # crear el detector de rostros frontal
+        # Create the front face detector
         self.detect_frontal_face = cv2.CascadeClassifier(cfg.detect_frontal_face)
-        # crear el detector de perfil rostros
+        # Create the face profile detector
         self.detect_perfil_face = cv2.CascadeClassifier(cfg.detect_perfil_face)
     def face_orientation(self,gray):
-        # frontal_face
+        # Frontal_face
         box_frontal,w_frontal = detect(gray,self.detect_frontal_face)
         if len(box_frontal)==0:
             box_frontal = []
             name_frontal = []
         else:
             name_frontal = len(box_frontal)*["frontal"]
-        # left_face
+            obs_switch_scene('Right') #Right side scene
+
+        # Left_face
         box_left, w_left = detect(gray,self.detect_perfil_face)
         if len(box_left)==0:
             box_left = []
             name_left = []
         else:
             name_left = len(box_left)*["left"]
-        # right_face
+            obs_switch_scene('Left') #Left side scene
+
+        # Right_face
         gray_flipped = cv2.flip(gray, 1)
         box_right, w_right = detect(gray_flipped,self.detect_perfil_face)
         if len(box_right)==0:
